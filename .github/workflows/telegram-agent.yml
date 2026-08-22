@@ -2,6 +2,13 @@ name: Telegram Shorts Agent
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/telegram-agent.yml"
+      - "src/**"
+      - "requirements.txt"
   schedule:
     - cron: "*/5 * * * *"
 
