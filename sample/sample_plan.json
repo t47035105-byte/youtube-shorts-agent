@@ -1,0 +1,19 @@
+{
+  "title": "구독료, 둘 다 내세요?",
+  "hook": "매달 새는 구독료부터 확인하세요.",
+  "narration": "이 파일은 렌더링 구조를 확인하는 샘플입니다. 실제 게시 전에는 반드시 최신 가격과 조건을 다시 검증합니다.",
+  "description": "자동 제작 구조 검증용 샘플입니다. 가격과 조건은 게시 시점 기준이며 변경될 수 있습니다.",
+  "hashtags": ["생활비", "소비검증", "구독료"],
+  "scenes": [
+    {"caption": "구독료 둘 다 내세요?", "visual_prompt": "스마트폰 구독 결제 화면을 확인하는 중년 한국인", "duration_s": 5},
+    {"caption": "한 달 비용부터", "visual_prompt": "책상 위 계산기와 카드 명세서", "duration_s": 5},
+    {"caption": "배송 횟수 계산", "visual_prompt": "현관 앞 정돈된 택배 상자", "duration_s": 5},
+    {"caption": "적립 조건 확인", "visual_prompt": "포인트 적립을 확인하는 스마트폰", "duration_s": 5},
+    {"caption": "구독은 계산입니다", "visual_prompt": "불필요한 구독을 정리하고 미소 짓는 사람", "duration_s": 5}
+  ],
+  "sources": [
+    {"title": "게시 전 공식 가격 확인 필요", "url": "https://example.com/verify-before-publish"},
+    {"title": "게시 전 이용 조건 확인 필요", "url": "https://example.com/verify-terms"}
+  ]
+}
+

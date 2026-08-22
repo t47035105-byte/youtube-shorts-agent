@@ -1,0 +1,61 @@
+name: Telegram Shorts Agent
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: telegram-shorts-agent
+  cancel-in-progress: false
+
+jobs:
+  poll-and-produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6' }}
+      OPENAI_IMAGE_MODEL: ${{ vars.OPENAI_IMAGE_MODEL || 'gpt-image-2' }}
+      IMAGE_COUNT: ${{ vars.IMAGE_COUNT || '4' }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_ALLOWED_CHAT_ID: ${{ secrets.TELEGRAM_ALLOWED_CHAT_ID }}
+      TELEGRAM_ALLOWED_USERNAME: ${{ secrets.TELEGRAM_ALLOWED_USERNAME }}
+      MAX_JOBS_PER_RUN: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Poll Telegram and produce
+        run: python -m src.telegram_agent
+      - name: Persist Telegram offset
+        if: always()
+        run: |
+          if git diff --quiet -- state/telegram_offset.txt; then exit 0; fi
+          git config user.name "shorts-agent"
+          git config user.email "actions@users.noreply.github.com"
+          git add state/telegram_offset.txt
+          git commit -m "chore: advance Telegram offset"
+          git push
+      - name: Upload completed videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shorts-output-${{ github.run_id }}
+          path: output/
+          if-no-files-found: ignore
+          retention-days: 7

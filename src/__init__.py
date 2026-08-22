@@ -1,0 +1,2 @@
+"""YouTube Shorts automation package."""
+
