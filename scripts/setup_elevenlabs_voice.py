@@ -7,8 +7,8 @@ import requests
 
 
 API_ROOT = "https://api.elevenlabs.io/v1"
-DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"
-DEFAULT_VOICE_NAME = "Sarah"
+DEFAULT_VOICE_ID = "7GJLtfswFrmju7j66Puy"
+DEFAULT_VOICE_NAME = "제니 쇼츠 진행자"
 PREVIEW_TEXT = (
     "잠깐만요. 매달 무심코 빠져나가는 이 돈, 정말 그만한 가치가 있을까요? "
     "광고 문구는 잠시 내려놓고 가격과 혜택, 실제 사용 조건을 하나씩 확인해 보겠습니다. "
@@ -54,29 +54,29 @@ def _create_preview(api_key: str, voice_id: str) -> bytes:
 
 
 def main() -> None:
-    configured_voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "").strip()
-    if configured_voice_id:
-        VOICE_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
-        VOICE_ID_FILE.write_text(configured_voice_id + "\n", encoding="utf-8")
-        print("Using the existing ELEVENLABS_VOICE_ID secret.")
-        return
-
-    if VOICE_ID_FILE.exists() and VOICE_ID_FILE.read_text(encoding="utf-8").strip():
-        print("The generated ElevenLabs voice is already configured.")
-        return
-
     api_key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("ELEVENLABS_API_KEY is required")
 
-    voice_id = DEFAULT_VOICE_ID
+    configured_voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "").strip()
+    saved_voice_id = (
+        VOICE_ID_FILE.read_text(encoding="utf-8").strip()
+        if VOICE_ID_FILE.exists()
+        else ""
+    )
+    voice_id = configured_voice_id or saved_voice_id or DEFAULT_VOICE_ID
+    voice_name = (
+        "ELEVENLABS_VOICE_ID secret"
+        if configured_voice_id
+        else DEFAULT_VOICE_NAME
+    )
 
     PREVIEW_FILE.parent.mkdir(parents=True, exist_ok=True)
     PREVIEW_FILE.write_bytes(_create_preview(api_key, voice_id))
 
     VOICE_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
     VOICE_ID_FILE.write_text(voice_id + "\n", encoding="utf-8")
-    print(f"Configured free ElevenLabs default voice: {DEFAULT_VOICE_NAME}")
+    print(f"Configured ElevenLabs Shorts voice: {voice_name}")
 
 
 if __name__ == "__main__":
