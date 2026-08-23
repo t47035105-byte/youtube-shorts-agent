@@ -46,7 +46,10 @@ def _create_preview(api_key: str, voice_id: str) -> bytes:
         },
         timeout=180,
     )
-    response.raise_for_status()
+    if not response.ok:
+        raise RuntimeError(
+            f"ElevenLabs TTS failed ({response.status_code}): {response.text}"
+        )
     return response.content
 
 
