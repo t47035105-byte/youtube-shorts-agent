@@ -4,13 +4,34 @@ import os
 from pathlib import Path
 
 
+DEFAULT_VOICE_ID_FILE = Path("config/elevenlabs_voice_id.txt")
+
+
+def resolve_voice_id() -> str:
+    voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "").strip()
+    if voice_id:
+        return voice_id
+
+    voice_id_file = Path(
+        os.environ.get("ELEVENLABS_VOICE_ID_FILE", str(DEFAULT_VOICE_ID_FILE))
+    )
+    if voice_id_file.exists():
+        voice_id = voice_id_file.read_text(encoding="utf-8").strip()
+        if voice_id:
+            return voice_id
+
+    raise RuntimeError(
+        "ELEVENLABS_VOICE_ID is required, or run the ElevenLabs voice setup workflow"
+    )
+
+
 def synthesize(text: str, output_path: Path) -> Path:
     import requests
 
     api_key = os.environ.get("ELEVENLABS_API_KEY")
-    voice_id = os.environ.get("ELEVENLABS_VOICE_ID")
-    if not api_key or not voice_id:
-        raise RuntimeError("ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID are required")
+    voice_id = resolve_voice_id()
+    if not api_key:
+        raise RuntimeError("ELEVENLABS_API_KEY is required")
 
     endpoint = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
     response = requests.post(
