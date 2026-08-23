@@ -1,5 +1,9 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
+from src.elevenlabs_tts import resolve_voice_id
 from src.models import ShortPlan
 from src.telegram_agent import parse_command
 from src.video_renderer import wrap_caption
@@ -23,6 +27,23 @@ SAMPLE_PLAN = {
 
 
 class CoreTests(unittest.TestCase):
+    def test_resolve_voice_id_prefers_environment(self) -> None:
+        with patch.dict("os.environ", {"ELEVENLABS_VOICE_ID": "voice-from-secret"}):
+            self.assertEqual(resolve_voice_id(), "voice-from-secret")
+
+    def test_resolve_voice_id_uses_generated_config(self) -> None:
+        with TemporaryDirectory() as temporary_directory:
+            voice_file = Path(temporary_directory) / "voice-id.txt"
+            voice_file.write_text("voice-from-config\n", encoding="utf-8")
+            with patch.dict(
+                "os.environ",
+                {
+                    "ELEVENLABS_VOICE_ID": "",
+                    "ELEVENLABS_VOICE_ID_FILE": str(voice_file),
+                },
+            ):
+                self.assertEqual(resolve_voice_id(), "voice-from-config")
+
     def test_parse_command(self) -> None:
         self.assertEqual(parse_command("/make 쿠팡 구독료"), ("/make", "쿠팡 구독료"))
         self.assertEqual(parse_command("/make@my_bot 주제"), ("/make", "주제"))
@@ -41,4 +62,3 @@ class CoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
