@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/telegram-agent.yml"
       - "src/**"
+      - "scripts/setup_elevenlabs_voice.py"
       - "requirements.txt"
   schedule:
     - cron: "*/5 * * * *"
@@ -20,6 +21,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  setup-elevenlabs-voice:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install voice setup runtime
+        run: python -m pip install "requests>=2.32.0"
+      - name: Create and configure the Shorts narrator
+        run: python scripts/setup_elevenlabs_voice.py
+      - name: Persist generated voice ID
+        run: |
+          if git diff --quiet -- config/elevenlabs_voice_id.txt; then exit 0; fi
+          git config user.name "shorts-agent"
+          git config user.email "actions@users.noreply.github.com"
+          git add config/elevenlabs_voice_id.txt
+          git commit -m "chore: configure ElevenLabs Shorts voice"
+          git push
+      - name: Upload voice preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: jenny-korean-shorts-voice-preview
+          path: output/voice-preview-jenny-korean-shorts.mp3
+          if-no-files-found: ignore
+          retention-days: 7
+
   poll-and-produce:
     runs-on: ubuntu-latest
     timeout-minutes: 45
