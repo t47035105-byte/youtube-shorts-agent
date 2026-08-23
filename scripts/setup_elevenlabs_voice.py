@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import os
 from pathlib import Path
 
@@ -8,15 +7,17 @@ import requests
 
 
 API_ROOT = "https://api.elevenlabs.io/v1"
-VOICE_NAME = "Jenny_Korean_Shorts"
-VOICE_DESCRIPTION = (
-    "A magnetic and trustworthy Korean female narrator in her late thirties. "
-    "She has crisp standard Seoul Korean pronunciation, a warm premium tone, "
-    "confident delivery, and a natural conversational rhythm. Her opening lines "
-    "create immediate curiosity for viral YouTube Shorts without sounding loud, "
-    "salesy, childish, robotic, or overly cheerful. She sounds intelligent, modern, "
-    "friendly, and authoritative, ideal for consumer fact-checking and practical "
-    "money-saving stories."
+VOICE_SEARCH_URL = "https://api.elevenlabs.io/v2/voices"
+PREFERRED_DEFAULT_VOICES = (
+    "Jessica",
+    "Matilda",
+    "Sarah",
+    "Talia",
+    "Elara",
+    "Florence",
+    "Clara",
+    "Janet",
+    "Riley",
 )
 PREVIEW_TEXT = (
     "잠깐만요. 매달 무심코 빠져나가는 이 돈, 정말 그만한 가치가 있을까요? "
@@ -35,6 +36,75 @@ def _headers(api_key: str) -> dict[str, str]:
     }
 
 
+def _list_default_voices(api_key: str) -> list[dict]:
+    params = {
+        "voice_type": "default",
+        "page_size": 100,
+        "sort": "name",
+        "sort_direction": "asc",
+        "include_total_count": "false",
+    }
+    response = requests.get(
+        VOICE_SEARCH_URL,
+        headers={"xi-api-key": api_key},
+        params=params,
+        timeout=60,
+    )
+
+    # A restricted API key can allow Text to Speech while denying voice-list
+    # access. Default voices are public, so retry without the restricted key.
+    if response.status_code in {401, 403}:
+        response = requests.get(VOICE_SEARCH_URL, params=params, timeout=60)
+
+    response.raise_for_status()
+    voices = response.json().get("voices", [])
+    if not voices:
+        raise RuntimeError("ElevenLabs returned no free default voices")
+    return voices
+
+
+def _choose_default_voice(voices: list[dict]) -> dict:
+    for preferred_name in PREFERRED_DEFAULT_VOICES:
+        for voice in voices:
+            display_name = str(voice.get("name", ""))
+            base_name = display_name.split(" - ", 1)[0]
+            if base_name.casefold() == preferred_name.casefold():
+                return voice
+
+    female_voices = [
+        voice
+        for voice in voices
+        if str(voice.get("labels", {}).get("gender", "")).casefold() == "female"
+    ]
+    if female_voices:
+        return female_voices[0]
+    return voices[0]
+
+
+def _create_preview(api_key: str, voice_id: str) -> bytes:
+    response = requests.post(
+        f"{API_ROOT}/text-to-speech/{voice_id}",
+        params={"output_format": "mp3_44100_128"},
+        headers={
+            **_headers(api_key),
+            "Accept": "audio/mpeg",
+        },
+        json={
+            "text": PREVIEW_TEXT,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {
+                "stability": 0.42,
+                "similarity_boost": 0.78,
+                "style": 0.18,
+                "use_speaker_boost": True,
+            },
+        },
+        timeout=180,
+    )
+    response.raise_for_status()
+    return response.content
+
+
 def main() -> None:
     configured_voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "").strip()
     if configured_voice_id:
@@ -51,53 +121,15 @@ def main() -> None:
     if not api_key:
         raise RuntimeError("ELEVENLABS_API_KEY is required")
 
-    design_response = requests.post(
-        f"{API_ROOT}/text-to-voice/design",
-        headers=_headers(api_key),
-        json={
-            "voice_description": VOICE_DESCRIPTION,
-            "text": PREVIEW_TEXT,
-            "auto_generate_text": False,
-            "quality": 0.95,
-            "guidance_scale": 4.0,
-            "seed": 47035105,
-        },
-        timeout=180,
-    )
-    design_response.raise_for_status()
-    previews = design_response.json().get("previews", [])
-    if not previews:
-        raise RuntimeError("ElevenLabs returned no voice previews")
-
-    # The prompt tightly specifies the desired production voice. Select the first
-    # high-quality result deterministically so setup is fully automatic.
-    selected = previews[0]
-    generated_voice_id = selected["generated_voice_id"]
+    selected = _choose_default_voice(_list_default_voices(api_key))
+    voice_id = selected["voice_id"]
 
     PREVIEW_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PREVIEW_FILE.write_bytes(base64.b64decode(selected["audio_base_64"]))
-
-    create_response = requests.post(
-        f"{API_ROOT}/text-to-voice",
-        headers=_headers(api_key),
-        json={
-            "voice_name": VOICE_NAME,
-            "voice_description": VOICE_DESCRIPTION,
-            "generated_voice_id": generated_voice_id,
-            "labels": {
-                "language": "ko",
-                "gender": "female",
-                "use_case": "social_media",
-            },
-        },
-        timeout=180,
-    )
-    create_response.raise_for_status()
-    voice_id = create_response.json()["voice_id"]
+    PREVIEW_FILE.write_bytes(_create_preview(api_key, voice_id))
 
     VOICE_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
     VOICE_ID_FILE.write_text(voice_id + "\n", encoding="utf-8")
-    print(f"Created and configured ElevenLabs voice: {VOICE_NAME}")
+    print(f"Configured free ElevenLabs default voice: {selected['name']}")
 
 
 if __name__ == "__main__":
