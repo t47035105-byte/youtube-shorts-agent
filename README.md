@@ -23,13 +23,18 @@ Repository → Settings → Secrets and variables → Actions에서 아래 항�
 | 이름 | 내용 |
 | --- | --- |
 | `ELEVENLABS_API_KEY` | ElevenLabs에서 생성한 제한형 키 |
-| `ELEVENLABS_VOICE_ID` | 선택한 ElevenLabs 음성 ID |
+| `ELEVENLABS_VOICE_ID` | 선택 사항. 비어 있으면 전용 한국어 쇼츠 음성을 자동 생성 |
 | `OPENAI_API_KEY` | 웹 검색·대본·이미지 생성을 위한 OpenAI API 키 |
 | `TELEGRAM_BOT_TOKEN` | BotFather가 발급한 텔레그램 봇 토큰 |
 | `TELEGRAM_ALLOWED_USERNAME` | 본인 텔레그램 사용자명에서 `@`를 뺀 값 |
 | `TELEGRAM_ALLOWED_CHAT_ID` | 선택 사항. 사용자명 대신 본인 채팅 ID를 쓸 때 등록 |
 
 키와 토큰은 코드, 이슈, 채팅에 적지 않습니다. GitHub Secrets에만 저장합니다.
+
+ElevenLabs 음성 ID를 따로 등록하지 않아도 됩니다. `ELEVENLABS_API_KEY`만
+있으면 최초 설정 때 `Jenny_Korean_Shorts` 음성을 Voice Design으로 생성하고
+프로젝트에 자동 연결합니다. 생성된 음성의 미리듣기 파일은 GitHub Actions
+실행 결과의 `jenny-korean-shorts-voice-preview` 아티팩트에서 확인할 수 있습니다.
 
 ## 비용 통제
 
