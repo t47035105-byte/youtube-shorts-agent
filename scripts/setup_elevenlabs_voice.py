@@ -7,18 +7,8 @@ import requests
 
 
 API_ROOT = "https://api.elevenlabs.io/v1"
-VOICE_SEARCH_URL = "https://api.elevenlabs.io/v2/voices"
-PREFERRED_DEFAULT_VOICES = (
-    "Jessica",
-    "Matilda",
-    "Sarah",
-    "Talia",
-    "Elara",
-    "Florence",
-    "Clara",
-    "Janet",
-    "Riley",
-)
+DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"
+DEFAULT_VOICE_NAME = "Sarah"
 PREVIEW_TEXT = (
     "잠깐만요. 매달 무심코 빠져나가는 이 돈, 정말 그만한 가치가 있을까요? "
     "광고 문구는 잠시 내려놓고 가격과 혜택, 실제 사용 조건을 하나씩 확인해 보겠습니다. "
@@ -34,51 +24,6 @@ def _headers(api_key: str) -> dict[str, str]:
         "xi-api-key": api_key,
         "Content-Type": "application/json",
     }
-
-
-def _list_default_voices(api_key: str) -> list[dict]:
-    params = {
-        "voice_type": "default",
-        "page_size": 100,
-        "sort": "name",
-        "sort_direction": "asc",
-        "include_total_count": "false",
-    }
-    response = requests.get(
-        VOICE_SEARCH_URL,
-        headers={"xi-api-key": api_key},
-        params=params,
-        timeout=60,
-    )
-
-    # A restricted API key can allow Text to Speech while denying voice-list
-    # access. Default voices are public, so retry without the restricted key.
-    if response.status_code in {401, 403}:
-        response = requests.get(VOICE_SEARCH_URL, params=params, timeout=60)
-
-    response.raise_for_status()
-    voices = response.json().get("voices", [])
-    if not voices:
-        raise RuntimeError("ElevenLabs returned no free default voices")
-    return voices
-
-
-def _choose_default_voice(voices: list[dict]) -> dict:
-    for preferred_name in PREFERRED_DEFAULT_VOICES:
-        for voice in voices:
-            display_name = str(voice.get("name", ""))
-            base_name = display_name.split(" - ", 1)[0]
-            if base_name.casefold() == preferred_name.casefold():
-                return voice
-
-    female_voices = [
-        voice
-        for voice in voices
-        if str(voice.get("labels", {}).get("gender", "")).casefold() == "female"
-    ]
-    if female_voices:
-        return female_voices[0]
-    return voices[0]
 
 
 def _create_preview(api_key: str, voice_id: str) -> bytes:
@@ -121,15 +66,14 @@ def main() -> None:
     if not api_key:
         raise RuntimeError("ELEVENLABS_API_KEY is required")
 
-    selected = _choose_default_voice(_list_default_voices(api_key))
-    voice_id = selected["voice_id"]
+    voice_id = DEFAULT_VOICE_ID
 
     PREVIEW_FILE.parent.mkdir(parents=True, exist_ok=True)
     PREVIEW_FILE.write_bytes(_create_preview(api_key, voice_id))
 
     VOICE_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
     VOICE_ID_FILE.write_text(voice_id + "\n", encoding="utf-8")
-    print(f"Configured free ElevenLabs default voice: {selected['name']}")
+    print(f"Configured free ElevenLabs default voice: {DEFAULT_VOICE_NAME}")
 
 
 if __name__ == "__main__":
