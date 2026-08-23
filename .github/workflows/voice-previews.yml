@@ -20,7 +20,7 @@ jobs:
   previews:
     runs-on: ubuntu-latest
     steps:
-      - name: Generate three free Korean female voice previews
+      - name: Generate three clear female voice previews
         env:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
         run: |
@@ -28,113 +28,45 @@ jobs:
           import json
           import os
           import pathlib
+          import urllib.error
           import urllib.parse
           import urllib.request
-          import urllib.error
 
           api_key = os.environ["ELEVENLABS_API_KEY"]
           out = pathlib.Path("voice-previews")
           out.mkdir(exist_ok=True)
 
-          headers = {
-              "xi-api-key": api_key,
-              "Content-Type": "application/json",
-              "Accept": "application/json",
-          }
-
-          def request_json(url, method="GET", payload=None):
-              data = None if payload is None else json.dumps(payload).encode("utf-8")
-              req = urllib.request.Request(url, data=data, headers=headers, method=method)
-              try:
-                  with urllib.request.urlopen(req, timeout=60) as response:
-                      raw = response.read()
-                      return json.loads(raw.decode("utf-8")) if raw else {}
-              except urllib.error.HTTPError as exc:
-                  detail = exc.read().decode("utf-8", "replace")
-                  raise RuntimeError(f"{method} {url} failed: {exc.code} {detail[:500]}") from exc
-
-          query = urllib.parse.urlencode({
-              "language": "ko",
-              "gender": "female",
-              "page_size": 100,
-          })
-          library = request_json(f"https://api.elevenlabs.io/v1/shared-voices?{query}")
-          voices = library.get("voices", [])
-
-          def is_free(v):
-              value = v.get("free_users_allowed")
-              return value is True or str(value).lower() == "true"
-
-          def score(v):
-              text = " ".join([
-                  str(v.get("name", "")),
-                  str(v.get("description", "")),
-                  str(v.get("use_case", "")),
-                  json.dumps(v.get("labels", {}), ensure_ascii=False),
-              ]).lower()
-              desired = [
-                  "narration", "narrator", "clear", "natural", "calm",
-                  "conversational", "professional", "social media", "warm",
-              ]
-              unwanted = ["whisper", "child", "cartoon", "character", "raspy", "deep"]
-              return (
-                  sum(250 for word in desired if word in text)
-                  - sum(400 for word in unwanted if word in text)
-                  + min(int(v.get("cloned_by_count") or 0), 200000) / 100
-              )
-
-          candidates = [v for v in voices if is_free(v)]
-          candidates.sort(key=score, reverse=True)
-          if len(candidates) < 3:
-              raise RuntimeError(f"Only {len(candidates)} free Korean female voices were returned")
-
+          voices = [
+              {"number": 1, "name": "Alice - clear and confident", "voice_id": "Xb7hH8MSUJpSbSDYk0k2"},
+              {"number": 2, "name": "Laura - bright and friendly", "voice_id": "FGY2WhTYpPnrIDTdsKH5"},
+              {"number": 3, "name": "Jessica - natural and lively", "voice_id": "cgSgspJ2msm6clMCkdW9"},
+          ]
           sample = (
               "멤버십은 많이 쓰는 것보다, 내 생활에 맞게 고르는 것이 더 중요합니다. "
               "배달과 장보기를 자주 이용한다면 쿠팡 와우가 편리하고, "
               "쇼핑 적립과 콘텐츠 혜택을 함께 원한다면 네이버플러스가 잘 맞습니다."
           )
 
-          selected = []
-          for index, voice in enumerate(candidates[:12], start=1):
-              if len(selected) == 3:
-                  break
-              source_id = voice["voice_id"]
-              owner_id = voice.get("public_owner_id")
-              usable_id = source_id
-              if owner_id:
-                  add_url = (
-                      "https://api.elevenlabs.io/v1/voices/add/"
-                      + urllib.parse.quote(str(owner_id), safe="")
-                      + "/"
-                      + urllib.parse.quote(str(source_id), safe="")
-                  )
-                  new_name = f"Jenny Clear {len(selected)+1} - {voice.get('name','Korean Female')}"[:100]
-                  try:
-                      added = request_json(add_url, "POST", {"new_name": new_name})
-                      usable_id = added.get("voice_id") or source_id
-                  except RuntimeError as exc:
-                      # A voice already present in the account may still be usable by its source ID.
-                      if "409" not in str(exc):
-                          continue
-
-              tts_url = (
+          generated = []
+          for voice in voices:
+              url = (
                   "https://api.elevenlabs.io/v1/text-to-speech/"
-                  + urllib.parse.quote(str(usable_id), safe="")
+                  + urllib.parse.quote(voice["voice_id"], safe="")
                   + "?output_format=mp3_44100_128"
               )
-              body = {
+              payload = {
                   "text": sample,
                   "model_id": "eleven_multilingual_v2",
                   "voice_settings": {
-                      "stability": 0.48,
-                      "similarity_boost": 0.72,
-                      "style": 0.08,
+                      "stability": 0.5,
+                      "similarity_boost": 0.68,
+                      "style": 0.05,
                       "use_speaker_boost": True,
                   },
               }
               req = urllib.request.Request(
-                  tts_url,
-                  data=json.dumps(body).encode("utf-8"),
+                  url,
+                  data=json.dumps(payload).encode("utf-8"),
                   headers={
                       "xi-api-key": api_key,
                       "Content-Type": "application/json",
@@ -145,31 +77,15 @@ jobs:
               try:
                   with urllib.request.urlopen(req, timeout=120) as response:
                       audio = response.read()
-              except urllib.error.HTTPError:
-                  continue
-              if len(audio) < 1000:
-                  continue
-
-              number = len(selected) + 1
-              filename = f"voice-{number}.mp3"
+              except urllib.error.HTTPError as exc:
+                  detail = exc.read().decode("utf-8", "replace")
+                  raise RuntimeError(f"{voice['name']} failed: {exc.code} {detail[:500]}") from exc
+              filename = f"voice-{voice['number']}.mp3"
               (out / filename).write_bytes(audio)
-              selected.append({
-                  "number": number,
-                  "name": voice.get("name"),
-                  "voice_id": usable_id,
-                  "source_voice_id": source_id,
-                  "description": voice.get("description"),
-                  "use_case": voice.get("use_case"),
-                  "labels": voice.get("labels", {}),
-                  "free_users_allowed": voice.get("free_users_allowed"),
-                  "filename": filename,
-              })
-
-          if len(selected) < 3:
-              raise RuntimeError(f"Generated only {len(selected)} usable previews")
+              generated.append({**voice, "filename": filename})
 
           (out / "voices.json").write_text(
-              json.dumps({"sample": sample, "voices": selected}, ensure_ascii=False, indent=2),
+              json.dumps({"sample": sample, "voices": generated}, ensure_ascii=False, indent=2),
               encoding="utf-8",
           )
           PY
