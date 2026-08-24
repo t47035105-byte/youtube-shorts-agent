@@ -43,7 +43,6 @@ class TelegramAgent:
 
     def _call(self, method: str, **kwargs: Any) -> dict[str, Any]:
         import requests
-
         response = requests.post(f"{API_ROOT}/bot{self.token}/{method}", timeout=180, **kwargs)
         response.raise_for_status()
         payload = response.json()
@@ -56,45 +55,52 @@ class TelegramAgent:
 
     def send_video(self, chat_id: int, path: Path, caption: str) -> None:
         with path.open("rb") as handle:
-            self._call(
-                "sendVideo",
-                data={"chat_id": chat_id, "caption": caption[:1024], "supports_streaming": True},
-                files={"video": (path.name, handle, "video/mp4")},
-            )
+            self._call("sendVideo", data={"chat_id": chat_id, "caption": caption[:1024], "supports_streaming": True}, files={"video": (path.name, handle, "video/mp4")})
 
     def offset(self) -> int:
         if not self.state_file.exists():
             return 0
-        return int(self.state_file.read_text(encoding="utf-8").strip() or 0)
+        try:
+            return int(self.state_file.read_text(encoding="utf-8").strip() or 0)
+        except ValueError:
+            return 0
 
     def save_offset(self, value: int) -> None:
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         self.state_file.write_text(str(value), encoding="utf-8")
 
     def updates(self) -> list[dict[str, Any]]:
-        payload = self._call("getUpdates", data={"offset": self.offset(), "timeout": 0, "limit": 20})
+        # Long-poll briefly so a scheduled run does not miss a command that arrives
+        # just as the job starts.
+        payload = self._call("getUpdates", data={"offset": self.offset(), "timeout": 10, "limit": 100})
         return payload.get("result", [])
 
-    def handle(self, update: dict[str, Any]) -> None:
+    def allowed(self, update: dict[str, Any]) -> bool:
         message = update.get("message") or {}
         chat_id = int((message.get("chat") or {}).get("id", 0))
         sender_username = str((message.get("from") or {}).get("username", "")).lower()
         if not chat_id:
-            return
+            return False
         if self.allowed_chat_id is not None and chat_id != self.allowed_chat_id:
-            return
+            return False
         if self.allowed_username is not None and sender_username != self.allowed_username:
-            return
+            return False
+        return True
+
+    def handle(self, update: dict[str, Any]) -> bool:
+        message = update.get("message") or {}
+        chat_id = int((message.get("chat") or {}).get("id", 0))
+        if not self.allowed(update):
+            return False
         command, argument = parse_command(message.get("text", ""))
         if command in {"/start", "/help"}:
             self.send_text(chat_id, "명령어: /make 만들고 싶은 쇼츠 주제\n예: /make 배달앱 구독료, 누구에게 이득일까")
-            return
+            return False
         if command == "/status":
             self.send_text(chat_id, "에이전트 정상 작동 중입니다.")
-            return
+            return False
         if command != "/make" or not argument:
-            self.send_text(chat_id, "주제를 이렇게 보내세요: /make 주제")
-            return
+            return False
 
         self.send_text(chat_id, f"제작을 시작합니다.\n주제: {argument}\n완성되면 영상과 근거를 함께 보낼게요.")
         try:
@@ -103,7 +109,9 @@ class TelegramAgent:
             source_lines = [f"- {item['title']}: {item['url']}" for item in plan.get("sources", [])]
             caption = f"{plan['title']}\n#{' #'.join(plan['hashtags'])}"
             self.send_video(chat_id, video, caption)
-            self.send_text(chat_id, "확인한 출처\n" + "\n".join(source_lines))
+            if source_lines:
+                self.send_text(chat_id, "확인한 출처\n" + "\n".join(source_lines))
+            return True
         except Exception as exc:
             detail = safe_error_detail(exc)
             self.send_text(chat_id, f"제작 중 오류가 발생했습니다.\n{type(exc).__name__}: {detail}")
@@ -112,23 +120,25 @@ class TelegramAgent:
 
 def poll_once() -> int:
     agent = TelegramAgent()
-    handled = 0
     max_jobs = max(1, int(os.environ.get("MAX_JOBS_PER_RUN", "1")))
+    jobs = 0
     for update in agent.updates():
         error: Exception | None = None
+        made = False
         try:
-            agent.handle(update)
+            made = agent.handle(update)
         except Exception as exc:
             error = exc
         finally:
+            # Advance every Telegram update exactly once; count only real /make jobs.
             agent.save_offset(int(update["update_id"]) + 1)
-        handled += 1
-        text = ((update.get("message") or {}).get("text") or "").strip()
+        if made:
+            jobs += 1
         if error is not None:
             raise error
-        if text.startswith("/make") and handled >= max_jobs:
+        if jobs >= max_jobs:
             break
-    return handled
+    return jobs
 
 
 if __name__ == "__main__":
