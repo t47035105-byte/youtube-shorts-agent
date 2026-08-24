@@ -9,6 +9,7 @@ from .pipeline import produce
 
 
 API_ROOT = "https://api.telegram.org"
+ERROR_DETAIL_LIMIT = 1400
 
 
 def parse_command(text: str) -> tuple[str, str]:
@@ -26,7 +27,7 @@ def safe_error_detail(exc: Exception) -> str:
         if secret:
             detail = detail.replace(secret, "[secret]")
     detail = " ".join(detail.split())
-    return detail[:1400]
+    return detail[:ERROR_DETAIL_LIMIT]
 
 
 class TelegramAgent:
