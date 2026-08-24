@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
+
+import requests
 
 from .models import ShortPlan
 
@@ -13,16 +16,9 @@ PLAN_SCHEMA = {
         "hook": {"type": "string"},
         "narration": {"type": "string"},
         "description": {"type": "string"},
-        "hashtags": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 3,
-            "maxItems": 7,
-        },
+        "hashtags": {"type": "array", "items": {"type": "string"}, "minItems": 3, "maxItems": 7},
         "scenes": {
-            "type": "array",
-            "minItems": 4,
-            "maxItems": 8,
+            "type": "array", "minItems": 4, "maxItems": 8,
             "items": {
                 "type": "object",
                 "properties": {
@@ -35,72 +31,71 @@ PLAN_SCHEMA = {
             },
         },
         "sources": {
-            "type": "array",
-            "minItems": 2,
-            "maxItems": 6,
+            "type": "array", "minItems": 0, "maxItems": 6,
             "items": {
                 "type": "object",
-                "properties": {
-                    "title": {"type": "string"},
-                    "url": {"type": "string"},
-                },
+                "properties": {"title": {"type": "string"}, "url": {"type": "string"}},
                 "required": ["title", "url"],
                 "additionalProperties": False,
             },
         },
     },
-    "required": [
-        "title",
-        "hook",
-        "narration",
-        "description",
-        "hashtags",
-        "scenes",
-        "sources",
-    ],
+    "required": ["title", "hook", "narration", "description", "hashtags", "scenes", "sources"],
     "additionalProperties": False,
 }
 
 
 INSTRUCTIONS = """
-당신은 한국의 50대 이상 시청자도 즉시 이해하는 소비 검증형 유튜브 쇼츠 편집장이다.
-반드시 실시간 웹 검색으로 현재 정보를 확인하고, 기업 공식 페이지·정부·공공기관·주요 언론처럼
-신뢰 가능한 출처를 우선한다. 날짜·가격·조건을 근거 없이 추정하지 않는다.
-
-완성물 규칙:
-- 45~58초 분량, 첫 1.5초에 강한 질문이나 손실 회피형 훅
-- 한국어 구어체, 짧은 문장, 과장·공포 조장·투자 권유 금지
-- 숫자는 비교가 바로 되게 말하고 적용 조건을 생략하지 않는다
-- 내레이션은 장면 순서와 정확히 일치
-- 각 캡션은 한눈에 읽히는 18자 안팎
-- visual_prompt는 이미지 안에 글자를 넣지 않는 세로형 광고 사진 지시문
-- 설명란 끝에 '가격과 조건은 게시 시점 기준이며 변경될 수 있습니다.' 포함
-- sources에는 실제로 확인한 URL만 기록
+당신은 한국의 50대 이상 시청자가 즉시 이해하는 유튜브 쇼츠 편집장이다.
+45~58초 분량의 세로형 쇼츠 기획안을 만든다.
+한국어 구어체와 짧은 문장을 사용하고 첫 1.5초에 강한 훅을 둔다.
+내레이션은 장면 순서와 일치해야 한다. 각 캡션은 한눈에 읽히게 짧게 쓴다.
+visual_prompt는 이미지 안에 글자를 넣지 않는 세로형 사진/영상 지시문으로 쓴다.
+설명란 끝에는 '정보는 게시 시점 기준이며 변경될 수 있습니다.'를 넣는다.
+사실 확인이 필요한 내용을 임의로 꾸며내지 않는다.
+반드시 JSON 하나만 출력하고 마크다운 코드블록은 쓰지 않는다.
 """.strip()
 
 
+def _extract_json(text: str) -> dict:
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end < start:
+        raise RuntimeError(f"Gemini did not return JSON: {text[:300]}")
+    return json.loads(text[start:end + 1])
+
+
 def write_plan(topic: str) -> ShortPlan:
-    from openai import OpenAI
-
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is required for researched script generation")
+        raise RuntimeError("GEMINI_API_KEY is required")
 
-    client = OpenAI(api_key=api_key)
-    response = client.responses.create(
-        model=os.environ.get("OPENAI_MODEL", "gpt-5.6"),
-        reasoning={"effort": os.environ.get("OPENAI_REASONING", "low")},
-        instructions=INSTRUCTIONS,
-        tools=[{"type": "web_search", "external_web_access": True}],
-        tool_choice="required",
-        input=f"다음 주제를 검증해서 쇼츠 기획안을 JSON으로 작성하세요: {topic}",
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "consumer_short_plan",
-                "strict": True,
-                "schema": PLAN_SCHEMA,
-            }
-        },
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    prompt = (
+        INSTRUCTIONS
+        + "\n\n다음 주제로 쇼츠 기획안을 작성하세요: " + topic
+        + "\n\nJSON 구조는 다음 JSON Schema를 따르세요:\n"
+        + json.dumps(PLAN_SCHEMA, ensure_ascii=False)
     )
-    return ShortPlan.from_dict(json.loads(response.output_text))
+    response = requests.post(
+        url,
+        params={"key": api_key},
+        headers={"Content-Type": "application/json"},
+        json={
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseMimeType": "application/json", "temperature": 0.4},
+        },
+        timeout=90,
+    )
+    if not response.ok:
+        raise RuntimeError(f"Gemini API error {response.status_code}: {response.text[:1000]}")
+    data = response.json()
+    try:
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError) as exc:
+        raise RuntimeError(f"Unexpected Gemini response: {data}") from exc
+    return ShortPlan.from_dict(_extract_json(text))
