@@ -19,6 +19,16 @@ def parse_command(text: str) -> tuple[str, str]:
     return command.split("@", 1)[0].lower(), argument.strip()
 
 
+def safe_error_detail(exc: Exception) -> str:
+    detail = str(exc).strip() or repr(exc)
+    for secret_name in ("TELEGRAM_BOT_TOKEN", "GEMINI_API_KEY", "ELEVENLABS_API_KEY", "OPENAI_API_KEY"):
+        secret = os.environ.get(secret_name, "")
+        if secret:
+            detail = detail.replace(secret, "[secret]")
+    detail = " ".join(detail.split())
+    return detail[:1400]
+
+
 class TelegramAgent:
     def __init__(self) -> None:
         self.token = os.environ["TELEGRAM_BOT_TOKEN"]
@@ -94,7 +104,8 @@ class TelegramAgent:
             self.send_video(chat_id, video, caption)
             self.send_text(chat_id, "확인한 출처\n" + "\n".join(source_lines))
         except Exception as exc:
-            self.send_text(chat_id, f"제작 중 오류가 발생했습니다: {type(exc).__name__}. GitHub 실행 기록을 확인해 주세요.")
+            detail = safe_error_detail(exc)
+            self.send_text(chat_id, f"제작 중 오류가 발생했습니다.\n{type(exc).__name__}: {detail}")
             raise
 
 
