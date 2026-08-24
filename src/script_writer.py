@@ -73,7 +73,7 @@ def write_plan(topic: str) -> ShortPlan:
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is required")
 
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     prompt = (
         INSTRUCTIONS
