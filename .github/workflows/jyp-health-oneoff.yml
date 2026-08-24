@@ -1,0 +1,44 @@
+name: Park Jin-young Health Short
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/jyp-health-oneoff.yml"
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-flash' }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_IMAGE_MODEL: ${{ vars.OPENAI_IMAGE_MODEL || 'gpt-image-2' }}
+      IMAGE_COUNT: "0"
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-cjk
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Render Park Jin-young health Short
+        run: >-
+          python -m src.main
+          "박진영이 방송과 인터뷰에서 공개해 온 건강관리 습관을 소개하는 쇼츠. 핵심은 꾸준한 운동과 스트레칭, 식단 관리, 아침에 올리브오일을 섭취하는 개인 루틴, 장기간 자기관리를 이어온 습관이다. 특정 음식의 의학적 효과를 단정하지 말고 '박진영 개인의 루틴'으로만 표현하며, 시청자에게 그대로 따라 하라고 권하지 않는다. 50대 이상 시청자가 보기 쉽게 45~55초로 구성한다."
+      - name: Upload video
+        uses: actions/upload-artifact@v4
+        with:
+          name: park-jinyoung-health-short
+          path: output/
+          if-no-files-found: error
+          retention-days: 7
