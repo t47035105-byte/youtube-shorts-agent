@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - codex/render-coupang-narration
     paths:
       - ".github/workflows/telegram-agent.yml"
       - "src/**"
@@ -22,7 +23,7 @@ concurrency:
 
 jobs:
   setup-elevenlabs-voice:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -39,6 +40,7 @@ jobs:
       - name: Create and configure the Shorts narrator
         run: python scripts/setup_elevenlabs_voice.py
       - name: Persist generated voice ID
+        if: github.ref == 'refs/heads/main'
         run: |
           if [ -z "$(git status --porcelain -- config/elevenlabs_voice_id.txt)" ]; then exit 0; fi
           git config user.name "shorts-agent"
@@ -55,6 +57,7 @@ jobs:
           retention-days: 7
 
   poll-and-produce:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
